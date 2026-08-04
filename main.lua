@@ -35,6 +35,14 @@ local espObjects = {}
 local moderatorNames = {"Admin", "Moderator", "Dev", "Owner"} -- Erweiterbare Moderator-Namensliste
 local originalLightingSettings = {}
 
+-- Target Follow UI Elemente (am Anfang mit den anderen UI-Variablen hinzufügen)
+local TargetFollowFrame = Instance.new("Frame")
+local PlayerListFrame = Instance.new("ScrollingFrame")
+local PlayerListLayout = Instance.new("UIListLayout")
+local PlayerListTemplate = Instance.new("TextButton")
+
+
+
 -- UI Setup
 ScreenGui.Parent = game:GetService("CoreGui")
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -58,6 +66,27 @@ TitleLabel.Font = Enum.Font.SourceSansBold
 TitleLabel.Text = "Five Nights Hunted Cheat"
 TitleLabel.TextColor3 = Color3.new(0.5, 0, 1)
 TitleLabel.TextSize = 18
+
+-- ... (im UI Setup Bereich)
+TargetFollowFrame.Parent = ScreenGui
+TargetFollowFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+TargetFollowFrame.BorderColor3 = Color3.new(0.5, 0, 1)
+TargetFollowFrame.BorderSizePixel = 2
+TargetFollowFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+TargetFollowFrame.Size = UDim2.new(0, 300, 0, 200)
+TargetFollowFrame.Visible = false -- Standardmäßig unsichtbar
+TargetFollowFrame.Active = true
+TargetFollowFrame.Draggable = true
+
+PlayerListFrame.Parent = TargetFollowFrame
+PlayerListFrame.BackgroundColor3 = Color3.new(0.05, 0, 0.2)
+PlayerListFrame.BorderSizePixel = 0
+PlayerListFrame.Position = UDim2.new(0, 10, 0, 40)
+PlayerListFrame.Size = UDim2.new(0, 280, 0, 150)
+PlayerListFrame.ScrollBarThickness = 5
+
+PlayerListLayout.Parent = PlayerListFrame
+PlayerListLayout.SortOrder = Enum.SortOrder.Name
 
 -- Button-Funktion
 local function createButton(name, position)
@@ -206,9 +235,22 @@ JumpButton.MouseButton1Click:Connect(function()
     jumpMultiplier = jumpMultiplier >= 3 and 1.5 or jumpMultiplier + 0.5
     JumpButton.Text = "Hochspringen: " .. jumpMultiplier .. "x"
     
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
+    -- Funktion zum Anwenden der Sprungkraft
+    local function applyJumpPower()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
+            -- Verhindere, dass das Spiel die Sprungkraft zurücksetzt
+            LocalPlayer.Character.Humanoid.StateChanged:Connect(function(oldState, newState)
+                if newState == Enum.HumanoidStateType.Landed then
+                    LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
+                end
+            end)
+        end
     end
+
+    applyJumpPower()
+    -- Sicherstellen, dass die Sprungkraft auch beim Respawn angewendet wird
+    LocalPlayer.CharacterAdded:Connect(applyJumpPower)
 end)
 
 -- Fullbright
@@ -235,28 +277,39 @@ FullbrightButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Target Follow
+-- Target Follow Button Logik
 TargetFollowButton.MouseButton1Click:Connect(function()
     if not isTargetFollow then
-        local playerList = {}
+        -- Spielerliste aktualisieren und anzeigen
+        for _, child in pairs(PlayerListFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
+        end
+
         for _, player in pairs(Players:GetPlayers()) do
             if player ~= LocalPlayer then
-                table.insert(playerList, player.Name)
-            end
-        end
-        
-        if #playerList > 0 then
-            local selectedPlayer = playerList[math.random(#playerList)]
-            for _, player in pairs(Players:GetPlayers()) do
-                if player.Name == selectedPlayer then
+                local playerButton = Instance.new("TextButton")
+                playerButton.Parent = PlayerListFrame
+                playerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+                playerButton.BorderSizePixel = 1
+                playerButton.Size = UDim2.new(0, 270, 0, 25)
+                playerButton.Font = Enum.Font.SourceSans
+                playerButton.Text = player.Name
+                playerButton.TextColor3 = Color3.new(0.5, 0, 1)
+                playerButton.TextSize = 14
+                
+                playerButton.MouseButton1Click:Connect(function()
                     targetPlayer = player
-                    break
-                end
+                    isTargetFollow = true
+                    TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+                    TargetFollowFrame.Visible = false
+                end)
             end
-            isTargetFollow = true
-            TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
         end
+        TargetFollowFrame.Visible = true
     else
+        -- Target Follow beenden
         isTargetFollow = false
         targetPlayer = nil
         TargetFollowButton.Text = "Target Follow: AUS"

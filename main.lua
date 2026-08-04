@@ -21,6 +21,8 @@ local FullbrightButton = Instance.new("TextButton")
 local TargetFollowButton = Instance.new("TextButton")
 local MinimizeButton = Instance.new("TextButton")
 local CloseButton = Instance.new("TextButton")
+local FlyButton = Instance.new("TextButton")w
+
 
 -- Zustandsvariablen
 local isUIVisible = true
@@ -40,6 +42,8 @@ local TargetFollowFrame = Instance.new("Frame")
 local PlayerListFrame = Instance.new("ScrollingFrame")
 local PlayerListLayout = Instance.new("UIListLayout")
 local selectedPlayerButton = nil -- Variable, um den ausgewählten Button zu speichern
+
+local noJumpCooldown = false
 
 
 
@@ -111,6 +115,7 @@ ESPButton = createButton("ESP: AUS", UDim2.new(0, 10, 0, 120))
 JumpButton = createButton("Hochspringen: 1.5x", UDim2.new(0, 10, 0, 160))
 FullbrightButton = createButton("Fullbright: AUS", UDim2.new(0, 10, 0, 200))
 TargetFollowButton = createButton("Target Follow: AUS", UDim2.new(0, 10, 0, 240))
+FlyButton = createButton("Fliegen: AUS", UDim2.new(0, 10, 0, 280))
 
 MinimizeButton = createButton("Minimieren (G)", UDim2.new(0, 10, 0, 320))
 CloseButton = createButton("Schließen", UDim2.new(0, 10, 0, 360))
@@ -230,27 +235,41 @@ function disableESP()
     espObjects = {}
 end
 
--- Höher springen
+-- Höher springen (ROBUSTE VERSION)
 JumpButton.MouseButton1Click:Connect(function()
     jumpMultiplier = jumpMultiplier >= 3 and 1.5 or jumpMultiplier + 0.5
     JumpButton.Text = "Hochspringen: " .. jumpMultiplier .. "x"
     
-    -- Funktion zum Anwenden der Sprungkraft
+    -- Diese Funktion setzt die Sprungkraft und stellt sicher, dass sie beibehalten wird
     local function applyJumpPower()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
-            -- Verhindere, dass das Spiel die Sprungkraft zurücksetzt
-            LocalPlayer.Character.Humanoid.StateChanged:Connect(function(oldState, newState)
+        local character = LocalPlayer.Character
+        if character and character:FindFirstChild("Humanoid") then
+            local humanoid = character.Humanoid
+            humanoid.JumpPower = 50 * jumpMultiplier
+            
+            -- Das ist der entscheidende Teil: Wir fangen das "Landed"-Event ab.
+            -- Jedes Mal, wenn der Charakter landet, setzen wir die Sprungkraft neu.
+            -- Das verhindert, dass das Spiel sie zurücksetzt.
+            humanoid.StateChanged:Connect(function(oldState, newState)
                 if newState == Enum.HumanoidStateType.Landed then
-                    LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
+                    -- Kleine Verzögerung, um sicherzustellen, dass das Spiel seinen Wert zuerst setzt
+                    wait(0.1)
+                    humanoid.JumpPower = 50 * jumpMultiplier
                 end
             end)
         end
     end
 
+    -- 1. Sofort anwenden, wenn der Charakter bereits existiert
     applyJumpPower()
-    -- Sicherstellen, dass die Sprungkraft auch beim Respawn angewendet wird
-    LocalPlayer.CharacterAdded:Connect(applyJumpPower)
+
+    -- 2. Einen Event-Listener erstellen, der die Funktion jedes Mal aufruft,
+    --    wenn der Charakter neu geladen wird (z.B. nach dem Tod)
+    LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+        -- Warte kurz, bis der Humanoid geladen ist
+        newCharacter:WaitForChild("Humanoid")
+        applyJumpPower()
+    end)
 end)
 
 -- Fullbright
@@ -275,6 +294,77 @@ FullbrightButton.MouseButton1Click:Connect(function()
         lighting.FogEnd = originalLightingSettings.FogEnd or 1000
         lighting.Ambient = originalLightingSettings.Ambient or Color3.new(0.5, 0.5, 0.5)
     end
+end)
+
+-- Fliegen
+local flySpeed = 50
+local isFlying = false
+local flyControlPart = nil
+local flyConnection = nil
+
+FlyButton.MouseButton1Click:Connect(function()
+    isFlying = not isFlying
+    FlyButton.Text = "Fliegen: " .. (isFlying and "EIN" or "AUS")
+    
+    if isFlying then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            -- Deaktiviere die Schwerkraft und das Fallen
+            LocalPlayer.Character.Humanoid.PlatformStand = true
+            
+            -- Erstelle einen unsichtbaren Teil zur Steuerung
+            flyControlPart = Instance.new("BodyVelocity")
+            flyControlPart.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            flyControlPart.Velocity = Vector3.new(0, 0, 0)
+            flyControlPart.Parent = LocalPlayer.Character.HumanoidRootPart
+            
+            -- Steuerung per Tastatur
+            flyConnection = UserInputService.InputBegan:Connect(function(input)
+                if not flyControlPart or not flyControlPart.Parent then return end
+                
+                local direction = Vector3.new(0, 0, 0)
+                if input.KeyCode == Enum.KeyCode.W then direction = direction + Camera.CFrame.LookVector end
+                if input.KeyCode == Enum.KeyCode.S then direction = direction - Camera.CFrame.LookVector end
+                if input.KeyCode == Enum.KeyCode.A then direction = direction - Camera.CFrame.RightVector end
+                if input.KeyCode == Enum.KeyCode.D then direction = direction + Camera.CFrame.RightVector end
+                if input.KeyCode == Enum.KeyCode.Space then direction = direction + Vector3.new(0, 1, 0) end
+                if input.KeyCode == Enum.KeyCode.LeftShift then direction = direction - Vector3.new(0, 1, 0) end
+                
+                flyControlPart.Velocity = direction.Unit * flySpeed
+            end)
+        end
+    else
+        -- Fliegen beenden
+        if LocalPlayer.Character and LocalPlayer.Character.Humanoid then
+            LocalPlayer.Character.Humanoid.PlatformStand = false
+        end
+        if flyControlPart then
+            flyControlPart:Destroy()
+            flyControlPart = nil
+        end
+        if flyConnection then
+            flyConnection:Disconnect()
+            flyConnection = nil
+        end
+    end
+end)
+
+-- Kein Jump Cooldown Button (füge diesen Button ebenfalls im UI-Setup hinzu, wenn du einen willst)
+-- Beispiel: local NoJumpCooldownButton = createButton("Kein Jump Cooldown: AUS", UDim2.new(0, 10, 0, 320))
+-- Dann den Klick-Handler hier hinzufügen:
+-- NoJumpCooldownButton.MouseButton1Click:Connect(function()
+--     noJumpCooldown = not noJumpCooldown
+--     NoJumpCooldownButton.Text = "Kein Jump Cooldown: " .. (noJumpCooldown and "EIN" oder "AUS")
+-- end)
+
+-- Für den Test kannst du es einfach so aktivieren:
+noJumpCooldown = true -- Setzt den Cheat automatisch auf AN beim Laden des Skripts
+
+-- Sicherstellen, dass das Fliegen beim Tod/Respawn deaktiviert wird
+LocalPlayer.CharacterAdded:Connect(function()
+    isFlying = false
+    FlyButton.Text = "Fliegen: AUS"
+    if flyControlPart then flyControlPart:Destroy() end
+    if flyConnection then flyConnection:Disconnect() end
 end)
 
 -- Funktion zum Füllen der Spielerliste
@@ -370,6 +460,14 @@ RunService.Stepped:Connect(function()
                 part.CanCollide = false
             end
         end
+    end
+end)
+
+-- Kein Jump Cooldown
+RunService.Heartbeat:Connect(function()
+    if noJumpCooldown and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.Jump = false -- Setzt den internen Jump-Zustand zurück
+        LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
     end
 end)
 

@@ -1,0 +1,414 @@
+-- Five Nights Hunted Cheat Script
+-- Ersteller: [Dein Name]
+-- Version: 1.0
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- UI Variablen
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local TitleLabel = Instance.new("TextLabel")
+local SpeedSlider = Instance.new("TextButton")
+local NoClipButton = Instance.new("TextButton")
+local ESPButton = Instance.new("TextButton")
+local JumpButton = Instance.new("TextButton")
+local FullbrightButton = Instance.new("TextButton")
+local TargetFollowButton = Instance.new("TextButton")
+local MinimizeButton = Instance.new("TextButton")
+local CloseButton = Instance.new("TextButton")
+
+-- Zustandsvariablen
+local isUIVisible = true
+local isNoClip = false
+local isESP = false
+local isFullbright = false
+local isTargetFollow = false
+local targetPlayer = nil
+local speedMultiplier = 1
+local jumpMultiplier = 1.5
+local espObjects = {}
+local moderatorNames = {"Admin", "Moderator", "Dev", "Owner"} -- Erweiterbare Moderator-Namensliste
+local originalLightingSettings = {}
+
+-- UI Setup
+ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+MainFrame.BorderColor3 = Color3.new(0.5, 0, 1)
+MainFrame.BorderSizePixel = 2
+MainFrame.Position = UDim2.new(0.1, 0, 0.3, 0)
+MainFrame.Size = UDim2.new(0, 300, 0, 400)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+TitleLabel.Parent = MainFrame
+TitleLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+TitleLabel.BorderColor3 = Color3.new(0.5, 0, 1)
+TitleLabel.BorderSizePixel = 1
+TitleLabel.Position = UDim2.new(0, 0, 0, 0)
+TitleLabel.Size = UDim2.new(1, 0, 0, 30)
+TitleLabel.Font = Enum.Font.SourceSansBold
+TitleLabel.Text = "Five Nights Hunted Cheat"
+TitleLabel.TextColor3 = Color3.new(0.5, 0, 1)
+TitleLabel.TextSize = 18
+
+-- Button-Funktion
+local function createButton(name, position)
+    local button = Instance.new("TextButton")
+    button.Parent = MainFrame
+    button.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+    button.BorderColor3 = Color3.new(0.5, 0, 1)
+    button.BorderSizePixel = 1
+    button.Position = position
+    button.Size = UDim2.new(0, 280, 0, 30)
+    button.Font = Enum.Font.SourceSans
+    button.Text = name
+    button.TextColor3 = Color3.new(0.5, 0, 1)
+    button.TextSize = 14
+    return button
+end
+
+-- Buttons erstellen
+SpeedSlider = createButton("Geschwindigkeit: 1x", UDim2.new(0, 10, 0, 40))
+NoClipButton = createButton("NoClip: AUS", UDim2.new(0, 10, 0, 80))
+ESPButton = createButton("ESP: AUS", UDim2.new(0, 10, 0, 120))
+JumpButton = createButton("Hochspringen: 1.5x", UDim2.new(0, 10, 0, 160))
+FullbrightButton = createButton("Fullbright: AUS", UDim2.new(0, 10, 0, 200))
+TargetFollowButton = createButton("Target Follow: AUS", UDim2.new(0, 10, 0, 240))
+
+MinimizeButton = createButton("Minimieren (G)", UDim2.new(0, 10, 0, 320))
+CloseButton = createButton("Schließen", UDim2.new(0, 10, 0, 360))
+
+-- Geschwindigkeitsänderung
+SpeedSlider.MouseButton1Click:Connect(function()
+    speedMultiplier = speedMultiplier >= 3 and 1 or speedMultiplier + 0.5
+    SpeedSlider.Text = "Geschwindigkeit: " .. speedMultiplier .. "x"
+    
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16 * speedMultiplier
+    end
+end)
+
+-- NoClip
+NoClipButton.MouseButton1Click:Connect(function()
+    isNoClip = not isNoClip
+    NoClipButton.Text = "NoClip: " .. (isNoClip and "EIN" or "AUS")
+    
+    if LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = not isNoClip
+            end
+        end
+    end
+end)
+
+-- ESP
+ESPButton.MouseButton1Click:Connect(function()
+    isESP = not isESP
+    ESPButton.Text = "ESP: " .. (isESP and "EIN" or "AUS")
+    
+    if isESP then
+        enableESP()
+    else
+        disableESP()
+    end
+end)
+
+function enableESP()
+    -- Spieler ESP
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local espBox = Instance.new("BoxHandleAdornment")
+                espBox.Adornee = character.HumanoidRootPart
+                espBox.Size = character.HumanoidRootPart.Size * Vector3.new(2, 3, 2)
+                espBox.Color3 = Color3.new(0, 0, 1) -- Blau für Spieler
+                espBox.Transparency = 0.7
+                espBox.AlwaysOnTop = true
+                espBox.ZIndex = 10
+                espBox.Parent = character.HumanoidRootPart
+                
+                local espName = Instance.new("BillboardGui")
+                espName.Adornee = character.Head
+                espName.Size = UDim2.new(0, 100, 0, 30)
+                espName.StudsOffset = Vector3.new(0, 3, 0)
+                espName.Parent = character.Head
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Text = player.Name
+                nameLabel.TextColor3 = Color3.new(0, 0, 1)
+                nameLabel.TextStrokeTransparency = 0
+                nameLabel.TextSize = 12
+                nameLabel.Font = Enum.Font.SourceSansBold
+                nameLabel.Parent = espName
+                
+                table.insert(espObjects, {box = espBox, name = espName, player = player})
+            end
+        end
+    end
+    
+    -- Animatronics ESP (Annahme: Animatronics sind in workspace mit bestimmten Namen)
+    for _, obj in pairs(workspace:GetChildren()) do
+        if string.find(obj.Name:lower(), "animatronic") or string.find(obj.Name:lower(), "monster") then
+            if obj:FindFirstChild("HumanoidRootPart") then
+                local espBox = Instance.new("BoxHandleAdornment")
+                espBox.Adornee = obj.HumanoidRootPart
+                espBox.Size = obj.HumanoidRootPart.Size * Vector3.new(2, 3, 2)
+                espBox.Color3 = Color3.new(1, 0, 0) -- Rot für Animatronics
+                espBox.Transparency = 0.7
+                espBox.AlwaysOnTop = true
+                espBox.ZIndex = 10
+                espBox.Parent = obj.HumanoidRootPart
+                
+                local espName = Instance.new("BillboardGui")
+                espName.Adornee = obj:FindFirstChild("Head") or obj.PrimaryPart
+                espName.Size = UDim2.new(0, 100, 0, 30)
+                espName.StudsOffset = Vector3.new(0, 3, 0)
+                espName.Parent = espName.Adornee
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Text = obj.Name
+                nameLabel.TextColor3 = Color3.new(1, 0, 0)
+                nameLabel.TextStrokeTransparency = 0
+                nameLabel.TextSize = 12
+                nameLabel.Font = Enum.Font.SourceSansBold
+                nameLabel.Parent = espName
+
+      table.insert(espObjects, {box = espBox, name = espName, obj = obj})
+            end
+        end
+    end
+end
+
+function disableESP()
+    for _, obj in pairs(espObjects) do
+        if obj.box then obj.box:Destroy() end
+        if obj.name then obj.name:Destroy() end
+    end
+    espObjects = {}
+end
+
+-- Höher springen
+JumpButton.MouseButton1Click:Connect(function()
+    jumpMultiplier = jumpMultiplier >= 3 and 1.5 or jumpMultiplier + 0.5
+    JumpButton.Text = "Hochspringen: " .. jumpMultiplier .. "x"
+    
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower = 50 * jumpMultiplier
+    end
+end)
+
+-- Fullbright
+FullbrightButton.MouseButton1Click:Connect(function()
+    isFullbright = not isFullbright
+    FullbrightButton.Text = "Fullbright: " .. (isFullbright and "EIN" or "AUS")
+    
+    local lighting = game:GetService("Lighting")
+    if isFullbright then
+        originalLightingSettings.Brightness = lighting.Brightness
+        originalLightingSettings.ClockTime = lighting.ClockTime
+        originalLightingSettings.FogEnd = lighting.FogEnd
+        originalLightingSettings.Ambient = lighting.Ambient
+        
+        lighting.Brightness = 2
+        lighting.ClockTime = 14
+        lighting.FogEnd = 100000
+        lighting.Ambient = Color3.new(1, 1, 1)
+    else
+        lighting.Brightness = originalLightingSettings.Brightness or 1
+        lighting.ClockTime = originalLightingSettings.ClockTime or 12
+        lighting.FogEnd = originalLightingSettings.FogEnd or 1000
+        lighting.Ambient = originalLightingSettings.Ambient or Color3.new(0.5, 0.5, 0.5)
+    end
+end)
+
+-- Target Follow
+TargetFollowButton.MouseButton1Click:Connect(function()
+    if not isTargetFollow then
+        local playerList = {}
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                table.insert(playerList, player.Name)
+            end
+        end
+        
+        if #playerList > 0 then
+            local selectedPlayer = playerList[math.random(#playerList)]
+            for _, player in pairs(Players:GetPlayers()) do
+                if player.Name == selectedPlayer then
+                    targetPlayer = player
+                    break
+                end
+            end
+            isTargetFollow = true
+            TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+        end
+    else
+        isTargetFollow = false
+        targetPlayer = nil
+        TargetFollowButton.Text = "Target Follow: AUS"
+    end
+end)
+
+-- UI Steuerung
+MinimizeButton.MouseButton1Click:Connect(function()
+    isUIVisible = not isUIVisible
+    MainFrame.Visible = isUIVisible
+end)
+
+CloseButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.G then
+        isUIVisible = not isUIVisible
+        MainFrame.Visible = isUIVisible
+    end
+end)
+
+-- NoClip Loop
+RunService.Stepped:Connect(function()
+    if isNoClip and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- Target Follow Loop
+RunService.Heartbeat:Connect(function()
+    if isTargetFollow and targetPlayer and targetPlayer.Character then
+        local targetPosition = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetPosition then
+            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid:MoveTo(targetPosition.Position)
+            end
+        end
+    end
+end)
+
+-- Moderator-Erkennung
+local function checkForModerators()
+    for _, player in pairs(Players:GetPlayers()) do
+        for _, moderatorName in pairs(moderatorNames) do
+            if string.find(player.Name:lower(), moderatorName:lower()) then
+                warn("Moderator erkannt: " .. player.Name .. " - Server wird verlassen!")
+                LocalPlayer:Kick("Moderator erkannt - Sicherheitshalfer aktiviert")
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Cooldown-Anzeige für Schläge
+local cooldownGui = Instance.new("ScreenGui")
+cooldownGui.Parent = game:GetService("CoreGui")
+cooldownGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local function createCooldownGui(player)
+    local playerFrame = Instance.new("Frame")
+    playerFrame.Parent = cooldownGui
+    playerFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+    playerFrame.BorderColor3 = Color3.new(0.5, 0, 1)
+    playerFrame.BorderSizePixel = 1
+    playerFrame.Position = UDim2.new(0, 10, 0, 50 + #cooldownGui:GetChildren() * 35)
+    playerFrame.Size = UDim2.new(0, 200, 0, 30)
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Parent = playerFrame
+    nameLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+    nameLabel.BorderSizePixel = 0
+    nameLabel.Position = UDim2.new(0, 5, 0, 0)
+    nameLabel.Size = UDim2.new(0, 100, 1, 0)
+    nameLabel.Font = Enum.Font.SourceSans
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = Color3.new(0.5, 0, 1)
+    nameLabel.TextSize = 14
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local cooldownBar = Instance.new("Frame")
+    cooldownBar.Parent = playerFrame
+    cooldownBar.BackgroundColor3 = Color3.new(0.5, 0, 1)
+    cooldownBar.BorderSizePixel = 0
+    cooldownBar.Position = UDim2.new(0, 110, 0, 5)
+    cooldownBar.Size = UDim2.new(0, 85, 0, 20)
+    
+    local cooldownTimer = Instance.new("TextLabel")
+    cooldownTimer.Parent = cooldownBar
+    cooldownTimer.BackgroundTransparency = 1
+    cooldownTimer.Size = UDim2.new(1, 0, 1, 0)
+    cooldownTimer.Font = Enum.Font.SourceSans
+    cooldownTimer.Text = "0.0s"
+    cooldownTimer.TextColor3 = Color3.new(1, 1, 1)
+    cooldownTimer.TextSize = 12
+    
+    return {frame = playerFrame, bar = cooldownBar, timer = cooldownTimer, player = player, cooldown = 0}
+end
+
+local playerCooldowns = {}
+
+-- Spieler-Cooldowns initialisieren
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        table.insert(playerCooldowns, createCooldownGui(player))
+    end
+end)
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        table.insert(playerCooldowns, createCooldownGui(player))
+    end
+end
+
+-- Cooldown-Update-Loop
+RunService.Heartbeat:Connect(function(deltaTime)
+    -- Moderator-Erkennung
+    checkForModerators()
+    
+    -- Cooldown-Anzeigen aktualisieren
+    for _, cooldownData in pairs(playerCooldowns) do
+        if cooldownData.cooldown > 0 then
+            cooldownData.cooldown = math.max(0, cooldownData.cooldown - deltaTime)
+            local percentage = cooldownData.cooldown / 5 -- Annahme: 5 Sekunden Cooldown
+            cooldownData.bar.Size = UDim2.new(0, 85 * percentage, 0, 20)
+            cooldownData.timer.Text = string.format("%.1fs", cooldownData.cooldown)
+        else
+            cooldownData.bar.Size = UDim2.new(0, 0, 0, 20)
+            cooldownData.timer.Text = "0.0s"
+        end
+    end
+end)
+
+-- Schläge erkennen und Cooldown setzen
+local function onPlayerHit(player)
+    for _, cooldownData in pairs(playerCooldowns) do
+        if cooldownData.player == player then
+            cooldownData.cooldown = 5 -- Annahme: 5 Sekunden Cooldown
+            break
+        end
+    end
+end
+
+-- Event-Listener für Schläge (je nach Spiel angepasst)
+-- Beispiel: LocalPlayer.Character.Touched:Connect(function(part) ... end)
+
+print("Five Nights Hunted Cheat Script geladen!")
+print("Drücke G zum Minimieren/Maximieren der UI")

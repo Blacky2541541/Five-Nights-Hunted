@@ -21,7 +21,8 @@ local FullbrightButton = Instance.new("TextButton")
 local TargetFollowButton = Instance.new("TextButton")
 local MinimizeButton = Instance.new("TextButton")
 local CloseButton = Instance.new("TextButton")
-local FlyButton = Instance.new("TextButton")w
+local FlyButton = Instance.new("TextButton")
+local NoJumpCooldownButton = Instance.new("TextButton")
 
 
 -- Zustandsvariablen
@@ -30,6 +31,8 @@ local isNoClip = false
 local isESP = false
 local isFullbright = false
 local isTargetFollow = false
+local isFlying = false
+local noJumpCooldown = false
 local targetPlayer = nil
 local speedMultiplier = 1
 local jumpMultiplier = 1.5
@@ -43,7 +46,6 @@ local PlayerListFrame = Instance.new("ScrollingFrame")
 local PlayerListLayout = Instance.new("UIListLayout")
 local selectedPlayerButton = nil -- Variable, um den ausgewählten Button zu speichern
 
-local noJumpCooldown = false
 
 
 
@@ -59,6 +61,7 @@ MainFrame.Position = UDim2.new(0.1, 0, 0.3, 0)
 MainFrame.Size = UDim2.new(0, 300, 0, 400)
 MainFrame.Active = true
 MainFrame.Draggable = true
+noJumpCooldown = true -- Setzt den Cheat automatisch auf AN beim Laden des Skripts
 
 TitleLabel.Parent = MainFrame
 TitleLabel.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -116,9 +119,10 @@ JumpButton = createButton("Hochspringen: 1.5x", UDim2.new(0, 10, 0, 160))
 FullbrightButton = createButton("Fullbright: AUS", UDim2.new(0, 10, 0, 200))
 TargetFollowButton = createButton("Target Follow: AUS", UDim2.new(0, 10, 0, 240))
 FlyButton = createButton("Fliegen: AUS", UDim2.new(0, 10, 0, 280))
+NoJumpCooldownButton = createButton("Kein Jump Cooldown: AUS", UDim2.new(0, 10, 0, 320))
 
-MinimizeButton = createButton("Minimieren (G)", UDim2.new(0, 10, 0, 320))
-CloseButton = createButton("Schließen", UDim2.new(0, 10, 0, 360))
+MinimizeButton = createButton("Minimieren (P)", UDim2.new(0, 10, 0, 360))
+CloseButton = createButton("Schließen", UDim2.new(0, 10, 0, 400))
 
 -- Geschwindigkeitsänderung
 SpeedSlider.MouseButton1Click:Connect(function()
@@ -348,16 +352,8 @@ FlyButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Kein Jump Cooldown Button (füge diesen Button ebenfalls im UI-Setup hinzu, wenn du einen willst)
--- Beispiel: local NoJumpCooldownButton = createButton("Kein Jump Cooldown: AUS", UDim2.new(0, 10, 0, 320))
--- Dann den Klick-Handler hier hinzufügen:
--- NoJumpCooldownButton.MouseButton1Click:Connect(function()
---     noJumpCooldown = not noJumpCooldown
---     NoJumpCooldownButton.Text = "Kein Jump Cooldown: " .. (noJumpCooldown and "EIN" oder "AUS")
--- end)
 
--- Für den Test kannst du es einfach so aktivieren:
-noJumpCooldown = true -- Setzt den Cheat automatisch auf AN beim Laden des Skripts
+
 
 -- Sicherstellen, dass das Fliegen beim Tod/Respawn deaktiviert wird
 LocalPlayer.CharacterAdded:Connect(function()

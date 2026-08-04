@@ -386,17 +386,11 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Moderator-Erkennung
+-- Moderator-Erkennung (DEAKTIVIERT zur Sicherheit)
 local function checkForModerators()
-    for _, player in pairs(Players:GetPlayers()) do
-        for _, moderatorName in pairs(moderatorNames) do
-            if string.find(player.Name:lower(), moderatorName:lower()) then
-                warn("Moderator erkannt: " .. player.Name .. " - Server wird verlassen!")
-                LocalPlayer:Kick("Moderator erkannt - Sicherheitshalfer aktiviert")
-                return true
-            end
-        end
-    end
+    -- Die Funktion wurde deaktiviert, da sie zu viele Fehlalarme verursacht
+    -- und Spieler ohne Grund gekickt hat. Nur aktivieren, wenn eine
+    -- zuverlässige Erkennungsmethode bekannt ist.
     return false
 end
 
@@ -493,4 +487,4 @@ end
 -- Beispiel: LocalPlayer.Character.Touched:Connect(function(part) ... end)
 
 print("Five Nights Hunted Cheat Script geladen!")
-print("Drücke G zum Minimieren/Maximieren der UI")
+print("Drücke P zum Minimieren/Maximieren der UI")

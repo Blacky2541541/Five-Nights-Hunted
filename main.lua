@@ -39,7 +39,7 @@ local originalLightingSettings = {}
 local TargetFollowFrame = Instance.new("Frame")
 local PlayerListFrame = Instance.new("ScrollingFrame")
 local PlayerListLayout = Instance.new("UIListLayout")
-local PlayerListTemplate = Instance.new("TextButton")
+local selectedPlayerButton = nil -- Variable, um den ausgewählten Button zu speichern
 
 
 
@@ -277,44 +277,70 @@ FullbrightButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Target Follow Button Logik
-TargetFollowButton.MouseButton1Click:Connect(function()
-    if not isTargetFollow then
-        -- Spielerliste aktualisieren und anzeigen
-        for _, child in pairs(PlayerListFrame:GetChildren()) do
-            if child:IsA("TextButton") then
-                child:Destroy()
-            end
+-- Funktion zum Füllen der Spielerliste
+local function updatePlayerList()
+    for _, child in pairs(PlayerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
         end
+    end
 
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                local playerButton = Instance.new("TextButton")
-                playerButton.Parent = PlayerListFrame
-                playerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
-                playerButton.BorderSizePixel = 1
-                playerButton.Size = UDim2.new(0, 270, 0, 25)
-                playerButton.Font = Enum.Font.SourceSans
-                playerButton.Text = player.Name
-                playerButton.TextColor3 = Color3.new(0.5, 0, 1)
-                playerButton.TextSize = 14
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local playerButton = Instance.new("TextButton")
+            playerButton.Parent = PlayerListFrame
+            playerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+            playerButton.BorderSizePixel = 1
+            playerButton.Size = UDim2.new(0, 270, 0, 25)
+            playerButton.Font = Enum.Font.SourceSans
+            playerButton.Text = player.Name
+            playerButton.TextColor3 = Color3.new(0.5, 0, 1)
+            playerButton.TextSize = 14
+            playerButton.Name = player.Name -- Wichtig, um den Button später wiederzufinden
+
+            playerButton.MouseButton1Click:Connect(function()
+                -- Alte Auswahl aufheben
+                if selectedPlayerButton then
+                    selectedPlayerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+                end
                 
-                playerButton.MouseButton1Click:Connect(function()
-                    targetPlayer = player
-                    isTargetFollow = true
-                    TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
-                    TargetFollowFrame.Visible = false
-                end)
+                -- Neue Auswahl setzen und markieren
+                targetPlayer = player
+                selectedPlayerButton = playerButton
+                playerButton.BackgroundColor3 = Color3.new(0.3, 0, 0.5) -- Markierungsfarbe
+                
+                -- Text des Hauptbuttons aktualisieren, aber UI nicht schließen
+                TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+            end)
+            
+            -- Prüfen, ob dieser Spieler der aktuell ausgewählte ist, und ihn markieren
+            if targetPlayer and player.Name == targetPlayer.Name then
+                selectedPlayerButton = playerButton
+                playerButton.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
             end
         end
-        TargetFollowFrame.Visible = true
-    else
-        -- Target Follow beenden
-        isTargetFollow = false
-        targetPlayer = nil
+    end
+end
+
+-- Target Follow Button Logik (nur zum Umschalten von AN/AUS)
+TargetFollowButton.MouseButton1Click:Connect(function()
+    isTargetFollow = not isTargetFollow
+    if not isTargetFollow then
         TargetFollowButton.Text = "Target Follow: AUS"
+    else
+        if targetPlayer then
+            TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+        else
+            -- Wenn kein Ziel ausgewählt ist, aber AN gedrückt wird, einfach AN anzeigen
+            TargetFollowButton.Text = "Target Follow: AN"
+        end
     end
 end)
+
+-- Spielerliste beim Start und wenn neue Spieler beitreten aktualisieren
+updatePlayerList()
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
 
 -- UI Steuerung
 MinimizeButton.MouseButton1Click:Connect(function()
@@ -326,10 +352,13 @@ CloseButton.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
-UserInputService.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.G then
+-- UI Steuerung mit Taste P
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.P then
         isUIVisible = not isUIVisible
         MainFrame.Visible = isUIVisible
+        -- Target Follow UI ebenfalls minimieren/maximieren
+        TargetFollowFrame.Visible = isUIVisible
     end
 end)
 

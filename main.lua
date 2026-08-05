@@ -300,12 +300,16 @@ FullbrightButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fliegen (STABIL VERSION)
-local flySpeed = 50
+-- Fliegen (MIT SPEED MULTIPLIER)
 local isFlying = false
 local flyBodyVelocity = nil
 local flyBodyGyro = nil
 local flyConnection = nil
+
+-- Hilfsfunktion für aktuelle Fluggeschwindigkeit
+local function getFlySpeed()
+    return 16 * speedMultiplier * 2 -- x2 damit Fliegen schneller ist als Laufen
+end
 
 FlyButton.MouseButton1Click:Connect(function()
     isFlying = not isFlying
@@ -320,29 +324,24 @@ FlyButton.MouseButton1Click:Connect(function()
     if not humanoid or not rootPart then return end
     
     if isFlying then
-        -- Fliegen aktivieren
         humanoid.PlatformStand = true
         
-        -- BodyGyro für stabile Rotation
         flyBodyGyro = Instance.new("BodyGyro")
         flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         flyBodyGyro.P = 10000
         flyBodyGyro.Parent = rootPart
         
-        -- BodyVelocity für Bewegung
         flyBodyVelocity = Instance.new("BodyVelocity")
         flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
         flyBodyVelocity.Parent = rootPart
         
-        -- Steuerung
         flyConnection = RunService.Heartbeat:Connect(function()
             if not isFlying or not flyBodyVelocity or not flyBodyGyro then return end
             
             local direction = Vector3.new(0, 0, 0)
             local camera = workspace.CurrentCamera
             
-            -- WASD Steuerung relativ zur Kamera
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then
                 direction = direction + camera.CFrame.LookVector
             end
@@ -362,33 +361,21 @@ FlyButton.MouseButton1Click:Connect(function()
                 direction = direction - Vector3.new(0, 1, 0)
             end
             
-            -- Geschwindigkeit anwenden
             if direction.Magnitude > 0 then
-                flyBodyVelocity.Velocity = direction.Unit * flySpeed
+                flyBodyVelocity.Velocity = direction.Unit * getFlySpeed()
             else
                 flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             end
             
-            -- Rotation stabil halten
             flyBodyGyro.CFrame = camera.CFrame
         end)
     else
-        -- Fliegen beenden
         humanoid.PlatformStand = false
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         
-        if flyBodyVelocity then
-            flyBodyVelocity:Destroy()
-            flyBodyVelocity = nil
-        end
-        if flyBodyGyro then
-            flyBodyGyro:Destroy()
-            flyBodyGyro = nil
-        end
-        if flyConnection then
-            flyConnection:Disconnect()
-            flyConnection = nil
-        end
+        if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+        if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+        if flyConnection then flyConnection:Disconnect() flyConnection = nil end
     end
 end)
 
@@ -527,6 +514,34 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Bei Tod/Respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+    wait(0.5)
+    local humanoid = char:WaitForChild("Humanoid")
+    
+    -- Speed wiederherstellen
+    delay(0.1, function()
+        if speedMultiplier > 1 then
+            humanoid.WalkSpeed = 16 * speedMultiplier
+        end
+    end)
+    
+    -- Fliegen resetten
+    if isFlying then
+        isFlying = false
+        FlyButton.Text = "Fliegen: AUS"
+        if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+        if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+        if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+    end
+    
+    -- Target Follow neu starten wenn aktiv
+    if isTargetFollow and targetPlayer then
+        wait(0.5)
+        startTargetFollow()
+    end
+end)
+
 -- Bei Char-Spawn Geschwindigkeit wiederherstellen
 LocalPlayer.CharacterAdded:Connect(function(char)
     wait(0.5) -- Warten bis Humanoid existiert
@@ -548,17 +563,27 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Target Follow System
+-- TARGET FOLLOW SYSTEM (KORRIGIERT)
 local targetConnection = nil
-local targetCharacterAdded = nil
 
-local function startTargetFollow()
-    if targetConnection then targetConnection:Disconnect() end
+-- WICHTIG: Diese Funktion muss global sein
+function startTargetFollow()
+    -- Alte Verbindung trennen
+    if targetConnection then 
+        targetConnection:Disconnect() 
+        targetConnection = nil
+    end
+    
+    if not isTargetFollow or not targetPlayer then 
+        return 
+    end
+    
+    print("Starte Target Follow für: " .. targetPlayer.Name) -- Debug
     
     targetConnection = RunService.Heartbeat:Connect(function()
         if not isTargetFollow or not targetPlayer then return end
         
-        -- Prüfe ob Ziel existiert und lebt
+        -- Prüfe ob Ziel existiert
         if not targetPlayer.Character then return end
         
         local targetChar = targetPlayer.Character
@@ -566,7 +591,7 @@ local function startTargetFollow()
         local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
         
         if not targetHumanoid or not targetRoot then return end
-        if targetHumanoid.Health <= 0 then return end -- Nicht folgen wenn tot
+        if targetHumanoid.Health <= 0 then return end -- Tot = nicht folgen
         
         local localChar = LocalPlayer.Character
         if not localChar then return end
@@ -576,27 +601,18 @@ local function startTargetFollow()
         
         if not localHumanoid or not localRoot then return end
         
-        -- Direkt hinter dem Ziel kleben (3 Studs Abstand)
-        local targetPos = targetRoot.Position
-        local targetLook = targetRoot.CFrame.LookVector
-        local behindPos = targetPos - (targetLook * 3) + Vector3.new(0, 0.5, 0) -- 3 Studs hinten, leicht erhöht
+        -- Position direkt hinter dem Ziel berechnen (3 Studs Abstand)
+        local targetCFrame = targetRoot.CFrame
+        local behindPosition = targetCFrame.Position - (targetCFrame.LookVector * 3.5)
         
-        -- Sanftes Folgen mit Lerp für flüssige Bewegung
-        local currentPos = localRoot.Position
-        local newPos = currentPos:Lerp(behindPos, 0.15) -- 0.15 = sanfte Interpolation
+        -- Höhe anpassen (gleiche Höhe wie Ziel)
+        behindPosition = Vector3.new(behindPosition.X, targetRoot.Position.Y, behindPosition.Z)
         
-        -- Nur horizontal bewegen (Y separat behandeln)
-        local direction = (behindPos - currentPos)
-        direction = Vector3.new(direction.X, 0, direction.Z)
+        -- DIREKTE POSITION SETZEN (nicht nur MoveTo)
+        localRoot.CFrame = CFrame.new(behindPosition) * CFrame.Angles(0, targetCFrame.Rotation.Y, 0)
         
-        if direction.Magnitude > 0.1 then
-            localRoot.CFrame = CFrame.new(newPos.X, currentPos.Y, newPos.Z)
-            localHumanoid:MoveTo(Vector3.new(newPos.X, currentPos.Y, newPos.Z))
-        end
-        
-        -- Gleiche Rotation wie Ziel (optional - auskommentieren wenn nicht gewollt)
-        local targetRotation = targetRoot.CFrame - targetRoot.CFrame.Position
-        localRoot.CFrame = CFrame.new(localRoot.Position) * targetRotation
+        -- MoveTo zusätzlich für sanfte Bewegung wenn möglich
+        localHumanoid:MoveTo(behindPosition)
     end)
 end
 
@@ -611,36 +627,31 @@ Players.PlayerAdded:Connect(function(player)
     end)
 end)
 
--- Bei Spieler-Auswahl Follow starten
-local originalPlayerButtonClick = nil
+-- Spieler-Button Setup
 local function setupPlayerButton(player, button)
     button.MouseButton1Click:Connect(function()
+        print("Spieler gewählt: " .. player.Name) -- Debug
+        
+        -- Alte Auswahl zurücksetzen
         if selectedPlayerButton then
             selectedPlayerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
         end
         
+        -- Neue Auswahl
         targetPlayer = player
         selectedPlayerButton = button
         button.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
         
         TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
         
-        -- Verbindung für Char-Updates
-        if targetCharacterAdded then targetCharacterAdded:Disconnect() end
-        
-        targetCharacterAdded = player.CharacterAdded:Connect(function()
-            if isTargetFollow and targetPlayer == player then
-                wait(0.5)
-                startTargetFollow()
-            end
-        end)
-        
+        -- SOFORT starten
         startTargetFollow()
     end)
 end
 
--- Update PlayerList mit neuem Setup
-local function updatePlayerList()
+-- PlayerList Update (muss die setupPlayerButton nutzen)
+function updatePlayerList()
+    -- Alles löschen außer das Layout
     for _, child in pairs(PlayerListFrame:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
@@ -653,7 +664,7 @@ local function updatePlayerList()
             playerButton.Parent = PlayerListFrame
             playerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
             playerButton.BorderSizePixel = 1
-            playerButton.Size = UDim2.new(0, 270, 0, 25)
+            playerButton.Size = UDim2.new(1, -10, 0, 25)
             playerButton.Font = Enum.Font.SourceSans
             playerButton.Text = player.Name
             playerButton.TextColor3 = Color3.new(0.5, 0, 1)
@@ -662,6 +673,7 @@ local function updatePlayerList()
             
             setupPlayerButton(player, playerButton)
             
+            -- Markieren wenn bereits ausgewählt
             if targetPlayer and player.Name == targetPlayer.Name then
                 selectedPlayerButton = playerButton
                 playerButton.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
@@ -669,6 +681,16 @@ local function updatePlayerList()
         end
     end
 end
+
+-- Wenn Ziel respawnt, Follow wieder starten
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        if targetPlayer == player and isTargetFollow then
+            wait(0.5)
+            startTargetFollow()
+        end
+    end)
+end)
 
 -- Moderator-Erkennung (DEAKTIVIERT zur Sicherheit)
 local function checkForModerators()

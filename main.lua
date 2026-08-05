@@ -239,41 +239,72 @@ function disableESP()
     espObjects = {}
 end
 
--- Höher springen (ROBUSTE VERSION)
+-- Höher springen (FÜR ALLE CHARAKTERE)
 JumpButton.MouseButton1Click:Connect(function()
     jumpMultiplier = jumpMultiplier >= 3 and 1.5 or jumpMultiplier + 0.5
     JumpButton.Text = "Hochspringen: " .. jumpMultiplier .. "x"
     
-    -- Diese Funktion setzt die Sprungkraft und stellt sicher, dass sie beibehalten wird
     local function applyJumpPower()
         local character = LocalPlayer.Character
-        if character and character:FindFirstChild("Humanoid") then
-            local humanoid = character.Humanoid
-            humanoid.JumpPower = 50 * jumpMultiplier
-            
-            -- Das ist der entscheidende Teil: Wir fangen das "Landed"-Event ab.
-            -- Jedes Mal, wenn der Charakter landet, setzen wir die Sprungkraft neu.
-            -- Das verhindert, dass das Spiel sie zurücksetzt.
-            humanoid.StateChanged:Connect(function(oldState, newState)
-                if newState == Enum.HumanoidStateType.Landed then
-                    -- Kleine Verzögerung, um sicherzustellen, dass das Spiel seinen Wert zuerst setzt
-                    wait(0.1)
-                    humanoid.JumpPower = 50 * jumpMultiplier
+        if not character then return end
+        
+        -- Suche Humanoid (egal ob Spieler oder Animatronic)
+        local humanoid = character:FindFirstChild("Humanoid")
+        if not humanoid then 
+            -- Versuche Humanoid direkt zu finden
+            for _, obj in pairs(character:GetDescendants()) do
+                if obj:IsA("Humanoid") then
+                    humanoid = obj
+                    break
                 end
-            end)
+            end
+        end
+        
+        if humanoid then
+            humanoid.JumpPower = 50 * jumpMultiplier
+            print("JumpPower gesetzt auf: " .. humanoid.JumpPower)
         end
     end
 
-    -- 1. Sofort anwenden, wenn der Charakter bereits existiert
+    -- Sofort anwenden
     applyJumpPower()
 
-    -- 2. Einen Event-Listener erstellen, der die Funktion jedes Mal aufruft,
-    --    wenn der Charakter neu geladen wird (z.B. nach dem Tod)
+    -- Bei neuem Charakter (egal welcher)
     LocalPlayer.CharacterAdded:Connect(function(newCharacter)
-        -- Warte kurz, bis der Humanoid geladen ist
-        newCharacter:WaitForChild("Humanoid")
+        wait(0.3)
         applyJumpPower()
     end)
+end)
+
+-- Jump Power Erhaltung (für alle Charaktere)
+local lastJumpUpdate = 0
+RunService.Heartbeat:Connect(function()
+    if jumpMultiplier <= 1.5 then return end -- Nur wenn erhöht
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then 
+        -- Suche in Descendants
+        for _, obj in pairs(character:GetDescendants()) do
+            if obj:IsA("Humanoid") then
+                humanoid = obj
+                break
+            end
+        end
+    end
+    
+    if not humanoid then return end
+    
+    local currentTime = tick()
+    if currentTime - lastJumpUpdate > 0.2 then
+        local targetJump = 50 * jumpMultiplier
+        if math.abs(humanoid.JumpPower - targetJump) > 1 then
+            humanoid.JumpPower = targetJump
+        end
+        lastJumpUpdate = currentTime
+    end
 end)
 
 -- Fullbright
@@ -566,9 +597,7 @@ end)
 -- TARGET FOLLOW SYSTEM (KORRIGIERT)
 local targetConnection = nil
 
--- WICHTIG: Diese Funktion muss global sein
 function startTargetFollow()
-    -- Alte Verbindung trennen
     if targetConnection then 
         targetConnection:Disconnect() 
         targetConnection = nil
@@ -578,12 +607,11 @@ function startTargetFollow()
         return 
     end
     
-    print("Starte Target Follow für: " .. targetPlayer.Name) -- Debug
+    print("Starte Target Follow für: " .. targetPlayer.Name)
     
     targetConnection = RunService.Heartbeat:Connect(function()
         if not isTargetFollow or not targetPlayer then return end
         
-        -- Prüfe ob Ziel existiert
         if not targetPlayer.Character then return end
         
         local targetChar = targetPlayer.Character
@@ -591,7 +619,7 @@ function startTargetFollow()
         local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
         
         if not targetHumanoid or not targetRoot then return end
-        if targetHumanoid.Health <= 0 then return end -- Tot = nicht folgen
+        if targetHumanoid.Health <= 0 then return end
         
         local localChar = LocalPlayer.Character
         if not localChar then return end
@@ -601,18 +629,20 @@ function startTargetFollow()
         
         if not localHumanoid or not localRoot then return end
         
-        -- Position direkt hinter dem Ziel berechnen (3 Studs Abstand)
+        -- Position direkt hinter dem Ziel
         local targetCFrame = targetRoot.CFrame
         local behindPosition = targetCFrame.Position - (targetCFrame.LookVector * 3.5)
-        
-        -- Höhe anpassen (gleiche Höhe wie Ziel)
         behindPosition = Vector3.new(behindPosition.X, targetRoot.Position.Y, behindPosition.Z)
         
-        -- DIREKTE POSITION SETZEN (nicht nur MoveTo)
-        localRoot.CFrame = CFrame.new(behindPosition) * CFrame.Angles(0, targetCFrame.Rotation.Y, 0)
+        -- Rotation berechnen (schaut in die gleiche Richtung wie Ziel)
+        local lookDirection = targetCFrame.LookVector
+        local targetRotation = CFrame.lookAt(behindPosition, behindPosition + lookDirection)
         
-        -- MoveTo zusätzlich für sanfte Bewegung wenn möglich
-        localHumanoid:MoveTo(behindPosition)
+        -- CFrame direkt setzen (Position + Rotation)
+        localRoot.CFrame = targetRotation
+        
+        -- MoveTo für sanfte Bewegung (optional, kann weggelassen werden wenn es laggt)
+        -- localHumanoid:MoveTo(behindPosition)
     end)
 end
 
@@ -627,10 +657,23 @@ Players.PlayerAdded:Connect(function(player)
     end)
 end)
 
--- Spieler-Button Setup
 local function setupPlayerButton(player, button)
     button.MouseButton1Click:Connect(function()
-        print("Spieler gewählt: " .. player.Name) -- Debug
+        -- Wenn derselbe Spieler nochmal geklickt wird -> AUS
+        if targetPlayer == player then
+            targetPlayer = nil
+            button.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+            selectedPlayerButton = nil
+            TargetFollowButton.Text = "Target Follow: AN (Wähle Spieler)"
+            
+            -- Verbindung trennen
+            if targetConnection then
+                targetConnection:Disconnect()
+                targetConnection = nil
+            end
+            print("Target Follow ausgeschaltet für: " .. player.Name)
+            return
+        end
         
         -- Alte Auswahl zurücksetzen
         if selectedPlayerButton then
@@ -643,6 +686,7 @@ local function setupPlayerButton(player, button)
         button.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
         
         TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+        print("Spieler gewählt: " .. player.Name)
         
         -- SOFORT starten
         startTargetFollow()

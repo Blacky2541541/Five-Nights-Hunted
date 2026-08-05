@@ -300,50 +300,90 @@ FullbrightButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fliegen
+-- Fliegen (STABIL VERSION)
 local flySpeed = 50
 local isFlying = false
-local flyControlPart = nil
+local flyBodyVelocity = nil
+local flyBodyGyro = nil
 local flyConnection = nil
 
 FlyButton.MouseButton1Click:Connect(function()
     isFlying = not isFlying
     FlyButton.Text = "Fliegen: " .. (isFlying and "EIN" or "AUS")
     
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    
+    if not humanoid or not rootPart then return end
+    
     if isFlying then
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            -- Deaktiviere die Schwerkraft und das Fallen
-            LocalPlayer.Character.Humanoid.PlatformStand = true
+        -- Fliegen aktivieren
+        humanoid.PlatformStand = true
+        
+        -- BodyGyro für stabile Rotation
+        flyBodyGyro = Instance.new("BodyGyro")
+        flyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        flyBodyGyro.P = 10000
+        flyBodyGyro.Parent = rootPart
+        
+        -- BodyVelocity für Bewegung
+        flyBodyVelocity = Instance.new("BodyVelocity")
+        flyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        flyBodyVelocity.Parent = rootPart
+        
+        -- Steuerung
+        flyConnection = RunService.Heartbeat:Connect(function()
+            if not isFlying or not flyBodyVelocity or not flyBodyGyro then return end
             
-            -- Erstelle einen unsichtbaren Teil zur Steuerung
-            flyControlPart = Instance.new("BodyVelocity")
-            flyControlPart.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            flyControlPart.Velocity = Vector3.new(0, 0, 0)
-            flyControlPart.Parent = LocalPlayer.Character.HumanoidRootPart
+            local direction = Vector3.new(0, 0, 0)
+            local camera = workspace.CurrentCamera
             
-            -- Steuerung per Tastatur
-            flyConnection = UserInputService.InputBegan:Connect(function(input)
-                if not flyControlPart or not flyControlPart.Parent then return end
-                
-                local direction = Vector3.new(0, 0, 0)
-                if input.KeyCode == Enum.KeyCode.W then direction = direction + Camera.CFrame.LookVector end
-                if input.KeyCode == Enum.KeyCode.S then direction = direction - Camera.CFrame.LookVector end
-                if input.KeyCode == Enum.KeyCode.A then direction = direction - Camera.CFrame.RightVector end
-                if input.KeyCode == Enum.KeyCode.D then direction = direction + Camera.CFrame.RightVector end
-                if input.KeyCode == Enum.KeyCode.Space then direction = direction + Vector3.new(0, 1, 0) end
-                if input.KeyCode == Enum.KeyCode.LeftShift then direction = direction - Vector3.new(0, 1, 0) end
-                
-                flyControlPart.Velocity = direction.Unit * flySpeed
-            end)
-        end
+            -- WASD Steuerung relativ zur Kamera
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                direction = direction + camera.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                direction = direction - camera.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                direction = direction - camera.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                direction = direction + camera.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                direction = direction + Vector3.new(0, 1, 0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                direction = direction - Vector3.new(0, 1, 0)
+            end
+            
+            -- Geschwindigkeit anwenden
+            if direction.Magnitude > 0 then
+                flyBodyVelocity.Velocity = direction.Unit * flySpeed
+            else
+                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            end
+            
+            -- Rotation stabil halten
+            flyBodyGyro.CFrame = camera.CFrame
+        end)
     else
         -- Fliegen beenden
-        if LocalPlayer.Character and LocalPlayer.Character.Humanoid then
-            LocalPlayer.Character.Humanoid.PlatformStand = false
+        humanoid.PlatformStand = false
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        
+        if flyBodyVelocity then
+            flyBodyVelocity:Destroy()
+            flyBodyVelocity = nil
         end
-        if flyControlPart then
-            flyControlPart:Destroy()
-            flyControlPart = nil
+        if flyBodyGyro then
+            flyBodyGyro:Destroy()
+            flyBodyGyro = nil
         end
         if flyConnection then
             flyConnection:Disconnect()
@@ -411,15 +451,18 @@ end
 -- Target Follow Button Logik (nur zum Umschalten von AN/AUS)
 TargetFollowButton.MouseButton1Click:Connect(function()
     isTargetFollow = not isTargetFollow
+    TargetFollowFrame.Visible = isTargetFollow -- UI anzeigen/ausblenden
+    
     if not isTargetFollow then
         TargetFollowButton.Text = "Target Follow: AUS"
-    else
-        if targetPlayer then
-            TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
-        else
-            -- Wenn kein Ziel ausgewählt ist, aber AN gedrückt wird, einfach AN anzeigen
-            TargetFollowButton.Text = "Target Follow: AN"
+        targetPlayer = nil -- Reset wenn ausgeschaltet
+        if selectedPlayerButton then
+            selectedPlayerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+            selectedPlayerButton = nil
         end
+    else
+        TargetFollowButton.Text = "Target Follow: AN (Wähle Spieler)"
+        updatePlayerList() -- Liste aktualisieren beim Öffnen
     end
 end)
 
@@ -459,6 +502,44 @@ RunService.Stepped:Connect(function()
     end
 end)
 
+-- Geschwindigkeitserhaltung (Schaden/Crouch Fix)
+local lastSpeedUpdate = 0
+RunService.Heartbeat:Connect(function()
+    if speedMultiplier <= 1 then return end -- Nur wenn erhöht
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    -- Geschwindigkeit erzwingen (alle 0.1 Sekunden)
+    local currentTime = tick()
+    if currentTime - lastSpeedUpdate > 0.1 then
+        local targetSpeed = 16 * speedMultiplier
+        
+        -- Nur setzen wenn abweichend (Performance)
+        if math.abs(humanoid.WalkSpeed - targetSpeed) > 0.1 then
+            humanoid.WalkSpeed = targetSpeed
+        end
+        
+        lastSpeedUpdate = currentTime
+    end
+end)
+
+-- Bei Char-Spawn Geschwindigkeit wiederherstellen
+LocalPlayer.CharacterAdded:Connect(function(char)
+    wait(0.5) -- Warten bis Humanoid existiert
+    local humanoid = char:WaitForChild("Humanoid")
+    
+    -- Kurz warten dann Speed setzen
+    delay(0.1, function()
+        if speedMultiplier > 1 then
+            humanoid.WalkSpeed = 16 * speedMultiplier
+        end
+    end)
+end)
+
 -- Kein Jump Cooldown
 RunService.Heartbeat:Connect(function()
     if noJumpCooldown and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -467,18 +548,127 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Target Follow Loop
-RunService.Heartbeat:Connect(function()
-    if isTargetFollow and targetPlayer and targetPlayer.Character then
-        local targetPosition = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if targetPosition then
-            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid:MoveTo(targetPosition.Position)
+-- Target Follow System
+local targetConnection = nil
+local targetCharacterAdded = nil
+
+local function startTargetFollow()
+    if targetConnection then targetConnection:Disconnect() end
+    
+    targetConnection = RunService.Heartbeat:Connect(function()
+        if not isTargetFollow or not targetPlayer then return end
+        
+        -- Prüfe ob Ziel existiert und lebt
+        if not targetPlayer.Character then return end
+        
+        local targetChar = targetPlayer.Character
+        local targetHumanoid = targetChar:FindFirstChild("Humanoid")
+        local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if not targetHumanoid or not targetRoot then return end
+        if targetHumanoid.Health <= 0 then return end -- Nicht folgen wenn tot
+        
+        local localChar = LocalPlayer.Character
+        if not localChar then return end
+        
+        local localHumanoid = localChar:FindFirstChild("Humanoid")
+        local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+        
+        if not localHumanoid or not localRoot then return end
+        
+        -- Direkt hinter dem Ziel kleben (3 Studs Abstand)
+        local targetPos = targetRoot.Position
+        local targetLook = targetRoot.CFrame.LookVector
+        local behindPos = targetPos - (targetLook * 3) + Vector3.new(0, 0.5, 0) -- 3 Studs hinten, leicht erhöht
+        
+        -- Sanftes Folgen mit Lerp für flüssige Bewegung
+        local currentPos = localRoot.Position
+        local newPos = currentPos:Lerp(behindPos, 0.15) -- 0.15 = sanfte Interpolation
+        
+        -- Nur horizontal bewegen (Y separat behandeln)
+        local direction = (behindPos - currentPos)
+        direction = Vector3.new(direction.X, 0, direction.Z)
+        
+        if direction.Magnitude > 0.1 then
+            localRoot.CFrame = CFrame.new(newPos.X, currentPos.Y, newPos.Z)
+            localHumanoid:MoveTo(Vector3.new(newPos.X, currentPos.Y, newPos.Z))
+        end
+        
+        -- Gleiche Rotation wie Ziel (optional - auskommentieren wenn nicht gewollt)
+        local targetRotation = targetRoot.CFrame - targetRoot.CFrame.Position
+        localRoot.CFrame = CFrame.new(localRoot.Position) * targetRotation
+    end)
+end
+
+-- Wenn Ziel ausgewählt wird, Follow starten
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        if targetPlayer == player and isTargetFollow then
+            -- Ziel ist wieder da, Follow fortsetzen
+            wait(0.5) -- Kurz warten bis Char geladen
+            startTargetFollow()
+        end
+    end)
+end)
+
+-- Bei Spieler-Auswahl Follow starten
+local originalPlayerButtonClick = nil
+local function setupPlayerButton(player, button)
+    button.MouseButton1Click:Connect(function()
+        if selectedPlayerButton then
+            selectedPlayerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+        end
+        
+        targetPlayer = player
+        selectedPlayerButton = button
+        button.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
+        
+        TargetFollowButton.Text = "Target Follow: " .. targetPlayer.Name
+        
+        -- Verbindung für Char-Updates
+        if targetCharacterAdded then targetCharacterAdded:Disconnect() end
+        
+        targetCharacterAdded = player.CharacterAdded:Connect(function()
+            if isTargetFollow and targetPlayer == player then
+                wait(0.5)
+                startTargetFollow()
+            end
+        end)
+        
+        startTargetFollow()
+    end)
+end
+
+-- Update PlayerList mit neuem Setup
+local function updatePlayerList()
+    for _, child in pairs(PlayerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local playerButton = Instance.new("TextButton")
+            playerButton.Parent = PlayerListFrame
+            playerButton.BackgroundColor3 = Color3.new(0.1, 0, 0.3)
+            playerButton.BorderSizePixel = 1
+            playerButton.Size = UDim2.new(0, 270, 0, 25)
+            playerButton.Font = Enum.Font.SourceSans
+            playerButton.Text = player.Name
+            playerButton.TextColor3 = Color3.new(0.5, 0, 1)
+            playerButton.TextSize = 14
+            playerButton.Name = player.Name
+            
+            setupPlayerButton(player, playerButton)
+            
+            if targetPlayer and player.Name == targetPlayer.Name then
+                selectedPlayerButton = playerButton
+                playerButton.BackgroundColor3 = Color3.new(0.3, 0, 0.5)
             end
         end
     end
-end)
+end
 
 -- Moderator-Erkennung (DEAKTIVIERT zur Sicherheit)
 local function checkForModerators()

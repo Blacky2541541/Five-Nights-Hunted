@@ -161,25 +161,25 @@ ESPButton.MouseButton1Click:Connect(function()
 end)
 
 function enableESP()
-    -- Spieler ESP
+    -- Erstelle Highlight für Spieler
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local character = player.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                local espBox = Instance.new("BoxHandleAdornment")
-                espBox.Adornee = character.HumanoidRootPart
-                espBox.Size = character.HumanoidRootPart.Size * Vector3.new(2, 3, 2)
-                espBox.Color3 = Color3.new(0, 0, 1) -- Blau für Spieler
-                espBox.Transparency = 0.7
-                espBox.AlwaysOnTop = true
-                espBox.ZIndex = 10
-                espBox.Parent = character.HumanoidRootPart
+            if character and not character:FindFirstChild("ESP_Highlight") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_Highlight"
+                highlight.Adornee = character
+                highlight.FillColor = Color3.new(0, 0, 1) -- Blau
+                highlight.OutlineColor = Color3.new(0, 0, 1)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = character
                 
                 local espName = Instance.new("BillboardGui")
-                espName.Adornee = character.Head
+                espName.Adornee = character:FindFirstChild("Head") or character:WaitForChild("HumanoidRootPart")
                 espName.Size = UDim2.new(0, 100, 0, 30)
                 espName.StudsOffset = Vector3.new(0, 3, 0)
-                espName.Parent = character.Head
+                espName.Parent = character
                 
                 local nameLabel = Instance.new("TextLabel")
                 nameLabel.Size = UDim2.new(1, 0, 1, 0)
@@ -187,59 +187,74 @@ function enableESP()
                 nameLabel.Text = player.Name
                 nameLabel.TextColor3 = Color3.new(0, 0, 1)
                 nameLabel.TextStrokeTransparency = 0
-                nameLabel.TextSize = 12
+                nameLabel.TextSize = 14
                 nameLabel.Font = Enum.Font.SourceSansBold
                 nameLabel.Parent = espName
                 
-                table.insert(espObjects, {box = espBox, name = espName, player = player})
+                table.insert(espObjects, {highlight = highlight, name = espName, player = player})
             end
         end
     end
     
-    -- Animatronics ESP (Annahme: Animatronics sind in workspace mit bestimmten Namen)
-    for _, obj in pairs(workspace:GetChildren()) do
-        if string.find(obj.Name:lower(), "animatronic") or string.find(obj.Name:lower(), "monster") then
-            if obj:FindFirstChild("HumanoidRootPart") then
-                local espBox = Instance.new("BoxHandleAdornment")
-                espBox.Adornee = obj.HumanoidRootPart
-                espBox.Size = obj.HumanoidRootPart.Size * Vector3.new(2, 3, 2)
-                espBox.Color3 = Color3.new(1, 0, 0) -- Rot für Animatronics
-                espBox.Transparency = 0.7
-                espBox.AlwaysOnTop = true
-                espBox.ZIndex = 10
-                espBox.Parent = obj.HumanoidRootPart
+    -- Animatronics suchen (in allen Ordnern)
+    local function scanForAnimatronics(parent)
+        for _, obj in pairs(parent:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local name = obj.Name:lower()
+                -- Erkennung anhand verschiedener Kriterien
+                local isAnimatronic = string.find(name, "animatronic") or 
+                                     string.find(name, "monster") or 
+                                     string.find(name, "freddy") or 
+                                     string.find(name, "bonnie") or 
+                                     string.find(name, "chica") or 
+                                     string.find(name, "foxy") or 
+                                     string.find(name, "golden") or
+                                     (obj:FindFirstChild("Humanoid") and not Players:GetPlayerFromCharacter(obj))
                 
-                local espName = Instance.new("BillboardGui")
-                espName.Adornee = obj:FindFirstChild("Head") or obj.PrimaryPart
-                espName.Size = UDim2.new(0, 100, 0, 30)
-                espName.StudsOffset = Vector3.new(0, 3, 0)
-                espName.Parent = espName.Adornee
-                
-                local nameLabel = Instance.new("TextLabel")
-                nameLabel.Size = UDim2.new(1, 0, 1, 0)
-                nameLabel.BackgroundTransparency = 1
-                nameLabel.Text = obj.Name
-                nameLabel.TextColor3 = Color3.new(1, 0, 0)
-                nameLabel.TextStrokeTransparency = 0
-                nameLabel.TextSize = 12
-                nameLabel.Font = Enum.Font.SourceSansBold
-                nameLabel.Parent = espName
+                if isAnimatronic and obj:FindFirstChild("HumanoidRootPart") and not obj:FindFirstChild("ESP_Highlight") then
+                    local highlight = Instance.new("Highlight")
+                    highlight.Name = "ESP_Highlight"
+                    highlight.Adornee = obj
+                    highlight.FillColor = Color3.new(1, 0, 0) -- Rot
+                    highlight.OutlineColor = Color3.new(1, 0, 0)
+                    highlight.FillTransparency = 0.5
+                    highlight.OutlineTransparency = 0
+                    highlight.Parent = obj
+                    
+                    local espName = Instance.new("BillboardGui")
+                    espName.Adornee = obj:FindFirstChild("Head") or obj:WaitForChild("HumanoidRootPart")
+                    espName.Size = UDim2.new(0, 100, 0, 30)
+                    espName.StudsOffset = Vector3.new(0, 3, 0)
+                    espName.Parent = obj
+                    
+                    local nameLabel = Instance.new("TextLabel")
+                    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                    nameLabel.BackgroundTransparency = 1
+                    nameLabel.Text = obj.Name
+                    nameLabel.TextColor3 = Color3.new(1, 0, 0)
+                    nameLabel.TextStrokeTransparency = 0
+                    nameLabel.TextSize = 14
+                    nameLabel.Font = Enum.Font.SourceSansBold
+                    nameLabel.Parent = espName
 
-      table.insert(espObjects, {box = espBox, name = espName, obj = obj})
+                    table.insert(espObjects, {highlight = highlight, name = espName, obj = obj})
+                end
             end
         end
     end
+    
+    scanForAnimatronics(workspace)
 end
 
 function disableESP()
     for _, obj in pairs(espObjects) do
-        if obj.box then obj.box:Destroy() end
+        if obj.highlight then obj.highlight:Destroy() end
         if obj.name then obj.name:Destroy() end
     end
     espObjects = {}
 end
 
--- Höher springen (FÜR ALLE CHARAKTERE)
+-- Höher springen (KORRIGIERT)
 JumpButton.MouseButton1Click:Connect(function()
     jumpMultiplier = jumpMultiplier >= 3 and 1.5 or jumpMultiplier + 0.5
     JumpButton.Text = "Hochspringen: " .. jumpMultiplier .. "x"
@@ -248,61 +263,67 @@ JumpButton.MouseButton1Click:Connect(function()
         local character = LocalPlayer.Character
         if not character then return end
         
-        -- Suche Humanoid (egal ob Spieler oder Animatronic)
-        local humanoid = character:FindFirstChild("Humanoid")
-        if not humanoid then 
-            -- Versuche Humanoid direkt zu finden
-            for _, obj in pairs(character:GetDescendants()) do
-                if obj:IsA("Humanoid") then
-                    humanoid = obj
+        -- Finde Humanoid (auch in verschachtelten Strukturen)
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then
+            for _, desc in pairs(character:GetDescendants()) do
+                if desc:IsA("Humanoid") then
+                    humanoid = desc
                     break
                 end
             end
         end
         
         if humanoid then
-            humanoid.JumpPower = 50 * jumpMultiplier
-            print("JumpPower gesetzt auf: " .. humanoid.JumpPower)
+            -- Beide Werte setzen (JumpPower und JumpHeight für Kompatibilität)
+            local baseJump = 50
+            humanoid.JumpPower = baseJump * jumpMultiplier
+            humanoid.JumpHeight = 7.2 * jumpMultiplier -- Fallback für neuere Spiele
+            
+            print("Jump gesetzt: " .. humanoid.JumpPower)
         end
     end
 
-    -- Sofort anwenden
     applyJumpPower()
 
-    -- Bei neuem Charakter (egal welcher)
+    -- Speichere den Multiplier für später
+    local savedMultiplier = jumpMultiplier
+    
+    -- CharacterAdded Event
     LocalPlayer.CharacterAdded:Connect(function(newCharacter)
-        wait(0.3)
-        applyJumpPower()
+        wait(0.5)
+        local humanoid = newCharacter:WaitForChild("Humanoid", 2)
+        if humanoid then
+            humanoid.JumpPower = 50 * savedMultiplier
+            humanoid.JumpHeight = 7.2 * savedMultiplier
+        end
     end)
 end)
 
--- Jump Power Erhaltung (für alle Charaktere)
+-- Jump Power Erhaltung (STÄRKER)
 local lastJumpUpdate = 0
 RunService.Heartbeat:Connect(function()
-    if jumpMultiplier <= 1.5 then return end -- Nur wenn erhöht
+    if jumpMultiplier <= 1.5 then return end
     
     local character = LocalPlayer.Character
     if not character then return end
     
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid then 
-        -- Suche in Descendants
-        for _, obj in pairs(character:GetDescendants()) do
-            if obj:IsA("Humanoid") then
-                humanoid = obj
-                break
-            end
-        end
-    end
-    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
     
     local currentTime = tick()
-    if currentTime - lastJumpUpdate > 0.2 then
+    if currentTime - lastJumpUpdate > 0.1 then
         local targetJump = 50 * jumpMultiplier
-        if math.abs(humanoid.JumpPower - targetJump) > 1 then
+        local targetHeight = 7.2 * jumpMultiplier
+        
+        -- Beide Werte erzwingen
+        if math.abs(humanoid.JumpPower - targetJump) > 0.5 then
             humanoid.JumpPower = targetJump
         end
+        if math.abs(humanoid.JumpHeight - targetHeight) > 0.1 then
+            humanoid.JumpHeight = targetHeight
+        end
+        
         lastJumpUpdate = currentTime
     end
 end)
@@ -331,16 +352,28 @@ FullbrightButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fliegen (MIT SPEED MULTIPLIER)
+-- Fliegen (MIT DYNAMISCHER SPEED MULTIPLIER)
 local isFlying = false
 local flyBodyVelocity = nil
 local flyBodyGyro = nil
 local flyConnection = nil
+local currentFlySpeed = 50
 
--- Hilfsfunktion für aktuelle Fluggeschwindigkeit
-local function getFlySpeed()
-    return 16 * speedMultiplier * 2 -- x2 damit Fliegen schneller ist als Laufen
-end
+-- Speed-Slider anpassen für Live-Update beim Fliegen
+SpeedSlider.MouseButton1Click:Connect(function()
+    speedMultiplier = speedMultiplier >= 3 and 1 or speedMultiplier + 0.5
+    SpeedSlider.Text = "Geschwindigkeit: " .. speedMultiplier .. "x"
+    
+    -- Wenn gerade geflogen wird, Speed sofort updaten
+    if isFlying and flyBodyVelocity then
+        currentFlySpeed = 16 * speedMultiplier * 2
+    end
+    
+    -- WalkSpeed setzen
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16 * speedMultiplier
+    end
+end)
 
 FlyButton.MouseButton1Click:Connect(function()
     isFlying = not isFlying
@@ -367,8 +400,14 @@ FlyButton.MouseButton1Click:Connect(function()
         flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
         flyBodyVelocity.Parent = rootPart
         
+        -- Initiale Speed berechnen
+        currentFlySpeed = 16 * speedMultiplier * 2
+        
         flyConnection = RunService.Heartbeat:Connect(function()
             if not isFlying or not flyBodyVelocity or not flyBodyGyro then return end
+            
+            -- JEDE FRAME die aktuelle Speed ausrechnen (live update)
+            currentFlySpeed = 16 * speedMultiplier * 2
             
             local direction = Vector3.new(0, 0, 0)
             local camera = workspace.CurrentCamera
@@ -393,7 +432,7 @@ FlyButton.MouseButton1Click:Connect(function()
             end
             
             if direction.Magnitude > 0 then
-                flyBodyVelocity.Velocity = direction.Unit * getFlySpeed()
+                flyBodyVelocity.Velocity = direction.Unit * currentFlySpeed
             else
                 flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
             end
